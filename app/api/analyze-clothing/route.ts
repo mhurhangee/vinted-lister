@@ -31,26 +31,43 @@ const getPromptForTag = (tag: string) => {
 }
 
 export async function POST(req: Request) {
-  const { images } = await req.json()
+  try {
+    console.log('Starting image analysis')
+    const { images } = await req.json()
 
-  if (!images || images.length === 0) {
-    return new Response('No images provided', { status: 400 })
+    if (!images || images.length === 0) {
+      console.error('No images provided')
+      return new Response('No images provided', { status: 400 })
+    }
+
+    console.log(`Received ${images.length} images for analysis`)
+
+    const messages = images.map((img: ImageWithTag, index: number) => {
+      console.log(`Processing image ${index + 1} with tag: ${img.tag}`)
+      return {
+        role: 'user' as const,
+        content: [
+          { type: 'text', text: getPromptForTag(img.tag) },
+          { type: 'image', image: img.dataUrl.split(',')[1] },
+        ],
+      }
+    })
+
+    console.log('Sending request to OpenAI')
+    const result = await streamObject({
+      model: openai('gpt-4o-mini'),
+      schema: clothingSchema,
+      system: 'You are an expert in analyzing clothing items for online marketplaces like Vinted. Provide a detailed description based on the images provided. Include the title, description, category, brand, size, condition, colors, material, suggested price, and parcel size. Only include information that is visible in the images and is factual, do not include subjective opinions.',
+      messages,
+    })
+
+    console.log('Analysis completed successfully')
+    return result.toTextStreamResponse()
+  } catch (error) {
+    console.error('Error in image analysis:', error)
+    return new Response(JSON.stringify({ error: 'An error occurred during image analysis' }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' }
+    })
   }
-
-  const messages = images.map((img: ImageWithTag) => ({
-    role: 'user' as const,
-    content: [
-      { type: 'text', text: getPromptForTag(img.tag) },
-      { type: 'image', image: img.dataUrl.split(',')[1] },
-    ],
-  }))
-
-  const result = await streamObject({
-    model: openai('gpt-4o-mini'),
-    schema: clothingSchema,
-    system: 'You are an expert in analyzing clothing items for online marketplaces like Vinted. Provide a detailed description based on the images provided. Include the title, description, category, brand, size, condition, colors, material, suggested price, and parcel size. Only include information that is visible in the images and is factual, do not include subjective opinions.',
-    messages,
-  })
-
-  return result.toTextStreamResponse()
 }

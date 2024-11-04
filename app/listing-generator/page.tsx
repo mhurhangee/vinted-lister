@@ -10,7 +10,8 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { toast } from "sonner"
 import Image from 'next/image'
 import { clothingSchema } from '@/app/api/analyze-clothing/schema'
-import { X, Copy, Check } from 'lucide-react'
+import { X, Copy, Check, AlertCircle } from 'lucide-react'
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 
 type ImageWithTag = {
   dataUrl: string;
@@ -21,6 +22,7 @@ const imageTags = ['Please select image type', 'front', 'back', 'side', 'tags', 
 
 export default function ClothingAnalyzer() {
   const [images, setImages] = useState<ImageWithTag[]>([])
+  const [error, setError] = useState<string | null>(null)
   const { object, submit, isLoading } = useObject({
     api: '/api/analyze-clothing',
     schema: clothingSchema
@@ -51,16 +53,21 @@ export default function ClothingAnalyzer() {
   }
 
   const handleAnalyze = async () => {
+    setError(null)
     if (images.length > 0) {
-      await submit({ images })
+      try {
+        await submit({ images })
+      } catch (err) {
+        console.error('Error during analysis:', err)
+        setError('An error occurred during image analysis. Please try again.')
+      }
     }
   }
 
   const copyToClipboard = (text: string, field: string) => {
     navigator.clipboard.writeText(text).then(() => {
       setCopiedField(field)
-      toast.info(`${field} has been copied to your clipboard.`,
-      )
+      toast.info(`${field} has been copied to your clipboard.`)
       setTimeout(() => setCopiedField(null), 2000)
     })
   }
@@ -122,7 +129,14 @@ export default function ClothingAnalyzer() {
           {images.length >= 6 && (
             <p className="text-sm text-muted-foreground">Maximum number of images (6) reached.</p>
           )}
-          <Button onClick={handleAnalyze} disabled={images.length === 0 || isLoading || images.length === 6} className="w-full">
+          {error && (
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertTitle>Error</AlertTitle>
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          )}
+          <Button onClick={handleAnalyze} disabled={images.length === 0 || isLoading} className="w-full">
             {isLoading ? 'Analyzing...' : 'Create Listing from Images'}
           </Button>
         </div>
