@@ -71,7 +71,7 @@ export default function AboutPage() {
           <section className="space-y-4">
             <h2 className="text-2xl">Get in Touch</h2>
             <p className="text-muted-foreground">
-              Have questions or suggestions? We'd love to hear from you! Reach out through any of the channels below:
+              Have questions or suggestions? We&#39;d love to hear from you! Reach out through any of the channels below:
             </p>
             <div className="flex space-x-4">
               <Link 
