@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useCallback } from 'react'
 import { experimental_useObject as useObject } from 'ai/react'
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
@@ -20,6 +20,61 @@ type ImageWithTag = {
 
 const imageTags = ['Please select image type', 'front', 'back', 'side', 'tags', 'label', 'imperfection', 'close-up']
 
+const MAX_WIDTH = 800
+const MAX_HEIGHT = 800
+const QUALITY = 0.8
+
+const getFileSizeInMB = (file: File | Blob): number => {
+  return file.size / (1024 * 1024);
+}
+
+const resizeImage = (file: File): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const img = document.createElement('img')
+    img.onload = () => {
+      console.log(`Original image size: ${getFileSizeInMB(file).toFixed(2)} MB`)
+      const canvas = document.createElement('canvas')
+      let width = img.width
+      let height = img.height
+
+      if (width > height) {
+        if (width > MAX_WIDTH) {
+          height *= MAX_WIDTH / width
+          width = MAX_WIDTH
+        }
+      } else {
+        if (height > MAX_HEIGHT) {
+          width *= MAX_HEIGHT / height
+          height = MAX_HEIGHT
+        }
+      }
+
+      canvas.width = width
+      canvas.height = height
+
+      const ctx = canvas.getContext('2d')
+      ctx!.drawImage(img, 0, 0, width, height)
+
+      canvas.toBlob(
+        (blob) => {
+          if (blob) {
+            console.log(`Resized image size: ${getFileSizeInMB(blob).toFixed(2)} MB`)
+            const reader = new FileReader()
+            reader.onloadend = () => resolve(reader.result as string)
+            reader.readAsDataURL(blob)
+          } else {
+            reject(new Error('Failed to create blob'))
+          }
+        },
+        'image/jpeg',
+        QUALITY
+      )
+    }
+    img.onerror = (error) => reject(error)
+    img.src = URL.createObjectURL(file)
+  })
+}
+
 export default function ClothingAnalyzer() {
   const [images, setImages] = useState<ImageWithTag[]>([])
   const [error, setError] = useState<string | null>(null)
@@ -29,20 +84,32 @@ export default function ClothingAnalyzer() {
   })
   const [copiedField, setCopiedField] = useState<string | null>(null)
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files
     if (files) {
       const remainingSlots = 6 - images.length
       const filesToUpload = Array.from(files).slice(0, remainingSlots)
-      filesToUpload.forEach(file => {
-        const reader = new FileReader()
-        reader.onloadend = () => {
-          setImages(prev => [...prev, { dataUrl: reader.result as string, tag: 'Please select image type' }])
+      
+      let totalOriginalSize = 0
+      let totalResizedSize = 0
+      
+      for (const file of filesToUpload) {
+        try {
+          totalOriginalSize += file.size
+          const resizedDataUrl = await resizeImage(file)
+          const resizedBlob = await fetch(resizedDataUrl).then(r => r.blob())
+          totalResizedSize += resizedBlob.size
+          setImages(prev => [...prev, { dataUrl: resizedDataUrl, tag: 'Please select image type' }])
+        } catch (error) {
+          console.error('Error resizing image:', error)
+          toast.error(`Failed to process image: ${file.name}`)
         }
-        reader.readAsDataURL(file)
-      })
+      }
+      
+      console.log(`Total original size: ${(totalOriginalSize / (1024 * 1024)).toFixed(2)} MB`)
+      console.log(`Total resized size: ${(totalResizedSize / (1024 * 1024)).toFixed(2)} MB`)
     }
-  }
+  }, [images.length])
 
   const handleTagChange = (index: number, tag: string) => {
     setImages(prev => prev.map((img, i) => i === index ? { ...img, tag } : img))
